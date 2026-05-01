@@ -34,16 +34,6 @@ GitHub renders citation metadata from [CITATION.cff](CITATION.cff). Update the D
 
 MIT. See [LICENSE](LICENSE).
 
-## GitHub MCP
-
-The repo includes a minimal stdio MCP server for GitHub issue/repo management:
-
-```bash
-GITHUB_TOKEN=github_pat_... DUCAPRA_GITHUB_REPO=ik33mao/_DuCaPrA_ python3 tools/github_mcp_server.py
-```
-
-See [docs/GITHUB_MCP.md](docs/GITHUB_MCP.md).
-
 ## Durable State
 
 The default pipeline uses memory state for prototypes. Production deployments should use durable state so nonce replay protection and the TLA round counter survive process restarts:
