@@ -7,6 +7,7 @@ name = "ducapra"
 version = "0.1.0"
 description = "Dual-layer cryptographically anchored prompt authentication prototype with triangular liveness attestation."
 requires-python = ">=3.11"
+license = "MIT"
 dependencies = [
     "cryptography>=41",
 ]

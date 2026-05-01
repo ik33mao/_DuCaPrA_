@@ -1,6 +1,6 @@
 # DuCaPra
 
-DuCaPra is a prototype for **Dual-Layer Cryptographically Anchored Prompt Authentication** with **Triangular Liveness Attestation**.
+DuCaPra is a research prototype for **Dual-Layer Cryptographically Anchored Prompt Authentication** with **Triangular Liveness Attestation**. It separates trusted executable instructions from untrusted natural-language data by verifying cryptographic envelopes and liveness proofs before any privileged command is allowed to run.
 
 It demonstrates a fail-closed control plane for privileged LLM-adjacent instructions:
 
@@ -14,6 +14,10 @@ It demonstrates a fail-closed control plane for privileged LLM-adjacent instruct
 
 This prototype protects command execution boundaries by decoupling instruction execution from data processing via cryptographic enforcement. It does not claim to solve every form of prompt injection affecting ordinary model text generation, summarization, or classification.
 
+Suggested GitHub repo description:
+
+> DuCaPra implements DCAPA + TLA: signed instruction envelopes, triangular liveness attestation, durable replay protection, provenance validation, prompt-injection pre-scanning, and hash-chained audit logs for LLM-adjacent command security.
+
 ## Run
 
 ```bash
@@ -21,6 +25,14 @@ python3 -m unittest discover -s tests
 python3 -m ducapra
 PYTHONPATH=src python3 examples/basic_usage.py
 ```
+
+## Citation
+
+GitHub renders citation metadata from [CITATION.cff](CITATION.cff). Update the DOI/arXiv fields there when the preprint is live, then pin the arXiv URL in the repository description.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ## GitHub MCP
 

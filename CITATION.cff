@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use DuCaPra in research, please cite this software and the associated preprint when available."
+title: "DuCaPra: Dual-Layer Cryptographically Anchored Prompt Authentication with Triangular Liveness Attestation"
+type: software
+authors:
+  - name: "Rhasta"
+repository-code: "https://github.com/ik33mao/_DuCaPrA_"
+url: "https://github.com/ik33mao/_DuCaPrA_"
+date-released: "2026-05-01"
+version: "0.1.0"
+license: MIT
+keywords:
+  - prompt-injection
+  - llm-security
+  - ed25519
+  - authentication
+  - liveness-attestation
