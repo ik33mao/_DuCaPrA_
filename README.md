@@ -10,7 +10,7 @@ It demonstrates a fail-closed control plane for privileged LLM-adjacent instruct
 4. Nonces are tracked with TTL-based eviction to limit replay and memory growth.
 5. Optional provenance chains allow verified envelopes to be assembled into model context while failed inputs are quarantined.
 
-This prototype protects command execution boundaries. It does not claim to solve every form of prompt injection affecting ordinary model text generation, summarization, or classification.
+This prototype protects command execution boundaries by decoupling instruction execution from data processing via cryptographic enforcement. It does not claim to solve every form of prompt injection affecting ordinary model text generation, summarization, or classification.
 
 ## Run
 
