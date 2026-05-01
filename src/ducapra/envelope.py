@@ -14,6 +14,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+from .scanner import PromptInjectionScanner
+
 
 TrustLevel = Literal["system", "user_direct", "tool_output", "rag_chunk", "unknown"]
 
@@ -80,9 +82,14 @@ class Envelope:
 
 
 class EnvelopeSigner:
-    def __init__(self, private_key: Ed25519PrivateKey | None = None):
+    def __init__(
+        self,
+        private_key: Ed25519PrivateKey | None = None,
+        scanner: PromptInjectionScanner | None = None,
+    ):
         self._key = private_key or Ed25519PrivateKey.generate()
         self.public_key = self._key.public_key()
+        self._scanner = scanner or PromptInjectionScanner()
 
     @classmethod
     def from_pem(cls, pem_bytes: bytes, password: bytes | None = None) -> "EnvelopeSigner":
@@ -100,7 +107,12 @@ class EnvelopeSigner:
         provenance_chain: list[str] | None = None,
         position: int = 0,
         timestamp_ms: int | None = None,
+        allow_unsafe_content: bool = False,
     ) -> Envelope:
+        scan = self._scanner.scan(content)
+        if not scan.allowed and not allow_unsafe_content:
+            raise ValueError(f"content rejected by pre-sign scanner: {scan.reason}")
+
         timestamp_ms = timestamp_ms if timestamp_ms is not None else int(time.time() * 1000)
         content_hash = "sha256:" + hashlib.sha256(content.encode()).hexdigest()
         nonce = f"{session_id}:{timestamp_ms}:{position}:{uuid.uuid4().hex[:8]}"

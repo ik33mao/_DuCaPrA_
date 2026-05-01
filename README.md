@@ -9,6 +9,8 @@ It demonstrates a fail-closed control plane for privileged LLM-adjacent instruct
 3. The instruction signature is bound to the specific verified triangle hash.
 4. Nonces are tracked with TTL-based eviction to limit replay and memory growth.
 5. Optional provenance chains allow verified envelopes to be assembled into model context while failed inputs are quarantined.
+6. High-signal prompt-injection content is blocked before signing unless explicitly overridden for security fixtures.
+7. Execution and rejection events are written to a hash-chained audit log.
 
 This prototype protects command execution boundaries by decoupling instruction execution from data processing via cryptographic enforcement. It does not claim to solve every form of prompt injection affecting ordinary model text generation, summarization, or classification.
 
@@ -19,6 +21,16 @@ python3 -m unittest discover -s tests
 python3 -m ducapra
 PYTHONPATH=src python3 examples/basic_usage.py
 ```
+
+## GitHub MCP
+
+The repo includes a minimal stdio MCP server for GitHub issue/repo management:
+
+```bash
+GITHUB_TOKEN=github_pat_... DUCAPRA_GITHUB_REPO=ik33mao/_DuCaPrA_ python3 tools/github_mcp_server.py
+```
+
+See [docs/GITHUB_MCP.md](docs/GITHUB_MCP.md).
 
 ## Durable State
 

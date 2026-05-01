@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+import hashlib
+import json
 import time
 from pathlib import Path
 from typing import Protocol
@@ -22,6 +24,42 @@ class StateStore(Protocol):
     def record_triangle(self, round_id: int, triangle_hash: str, now_ms: int | None = None) -> None:
         ...
 
+    def append_audit_event(
+        self,
+        event_type: str,
+        outcome: str,
+        details: dict,
+        now_ms: int | None = None,
+    ) -> str:
+        ...
+
+    def audit_events(self) -> list[dict]:
+        ...
+
+
+def _canonical_json(payload: object) -> bytes:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _audit_hash(
+    *,
+    sequence: int,
+    previous_hash: str,
+    event_type: str,
+    outcome: str,
+    details: dict,
+    timestamp_ms: int,
+) -> str:
+    payload = {
+        "sequence": sequence,
+        "previous_hash": previous_hash,
+        "event_type": event_type,
+        "outcome": outcome,
+        "details": details,
+        "timestamp_ms": timestamp_ms,
+    }
+    return hashlib.sha256(_canonical_json(payload)).hexdigest()
+
 
 class InMemoryStateStore:
     def __init__(self, nonce_ttl_seconds: int):
@@ -29,6 +67,7 @@ class InMemoryStateStore:
         self._round_id = 0
         self._nonces: dict[str, int] = {}
         self._triangles: list[tuple[int, str, int]] = []
+        self._audit_events: list[dict] = []
 
     def get_round(self) -> int:
         return self._round_id
@@ -65,6 +104,40 @@ class InMemoryStateStore:
     def record_triangle(self, round_id: int, triangle_hash: str, now_ms: int | None = None) -> None:
         now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
         self._triangles.append((round_id, triangle_hash, now_ms))
+
+    def append_audit_event(
+        self,
+        event_type: str,
+        outcome: str,
+        details: dict,
+        now_ms: int | None = None,
+    ) -> str:
+        now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+        previous_hash = self._audit_events[-1]["event_hash"] if self._audit_events else "0" * 64
+        sequence = len(self._audit_events) + 1
+        event_hash = _audit_hash(
+            sequence=sequence,
+            previous_hash=previous_hash,
+            event_type=event_type,
+            outcome=outcome,
+            details=details,
+            timestamp_ms=now_ms,
+        )
+        self._audit_events.append(
+            {
+                "sequence": sequence,
+                "previous_hash": previous_hash,
+                "event_hash": event_hash,
+                "event_type": event_type,
+                "outcome": outcome,
+                "details": details,
+                "timestamp_ms": now_ms,
+            }
+        )
+        return event_hash
+
+    def audit_events(self) -> list[dict]:
+        return list(self._audit_events)
 
     def __len__(self) -> int:
         return len(self._nonces)
@@ -111,6 +184,19 @@ class SQLiteStateStore:
                     triangle_hash TEXT PRIMARY KEY,
                     round_id INTEGER NOT NULL,
                     seen_at_ms INTEGER NOT NULL
+                )
+                """
+            )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    previous_hash TEXT NOT NULL,
+                    event_hash TEXT NOT NULL UNIQUE,
+                    event_type TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    details_json TEXT NOT NULL,
+                    timestamp_ms INTEGER NOT NULL
                 )
                 """
             )
@@ -177,6 +263,75 @@ class SQLiteStateStore:
                 """,
                 (triangle_hash, round_id, now_ms),
             )
+
+    def append_audit_event(
+        self,
+        event_type: str,
+        outcome: str,
+        details: dict,
+        now_ms: int | None = None,
+    ) -> str:
+        now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+        details_json = _canonical_json(details).decode()
+        with self._conn:
+            row = self._conn.execute(
+                "SELECT sequence, event_hash FROM audit_log ORDER BY sequence DESC LIMIT 1"
+            ).fetchone()
+            previous_hash = row[1] if row else "0" * 64
+            next_sequence = int(row[0]) + 1 if row else 1
+            event_hash = _audit_hash(
+                sequence=next_sequence,
+                previous_hash=previous_hash,
+                event_type=event_type,
+                outcome=outcome,
+                details=details,
+                timestamp_ms=now_ms,
+            )
+            self._conn.execute(
+                """
+                INSERT INTO audit_log(
+                    sequence,
+                    previous_hash,
+                    event_hash,
+                    event_type,
+                    outcome,
+                    details_json,
+                    timestamp_ms
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    next_sequence,
+                    previous_hash,
+                    event_hash,
+                    event_type,
+                    outcome,
+                    details_json,
+                    now_ms,
+                ),
+            )
+        return event_hash
+
+    def audit_events(self) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT sequence, previous_hash, event_hash, event_type, outcome, details_json, timestamp_ms
+            FROM audit_log
+            ORDER BY sequence ASC
+            """
+        ).fetchall()
+        return [
+            {
+                "sequence": int(sequence),
+                "previous_hash": previous_hash,
+                "event_hash": event_hash,
+                "event_type": event_type,
+                "outcome": outcome,
+                "details": json.loads(details_json),
+                "timestamp_ms": int(timestamp_ms),
+            }
+            for sequence, previous_hash, event_hash, event_type, outcome, details_json, timestamp_ms in rows
+        ]
 
     def __len__(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM nonces").fetchone()

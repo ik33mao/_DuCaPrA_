@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from .state import InMemoryStateStore, StateStore
+from .scanner import PromptInjectionScanner
 
 
 PROTOCOL = "DuCaPra-TLA-v1"
@@ -256,6 +257,7 @@ class DuCaPraPipeline:
         block_ttl_seconds: int = 30,
         state_store: StateStore | None = None,
         tla_engine: TlaEngine | None = None,
+        command_scanner: PromptInjectionScanner | None = None,
     ):
         self.tla_engine = tla_engine or TlaEngine(block_ttl_seconds=block_ttl_seconds)
         self.state_store = (
@@ -264,6 +266,7 @@ class DuCaPraPipeline:
             else InMemoryStateStore(nonce_ttl_seconds=block_ttl_seconds * 10)
         )
         self.nonce_store = self.state_store
+        self.command_scanner = command_scanner or PromptInjectionScanner()
         self.tla_engine.current_round = self.state_store.get_round()
 
     def sign_instruction(
@@ -292,7 +295,12 @@ class DuCaPraPipeline:
         nonce: str,
         source_id: str = "admin",
         expires_in_seconds: int = 30,
+        allow_unsafe_command: bool = False,
     ) -> ExecutionRequest:
+        scan = self.command_scanner.scan(command)
+        if not scan.allowed and not allow_unsafe_command:
+            raise ValueError(f"command rejected by pre-sign scanner: {scan.reason}")
+
         self.tla_engine.current_round = self.state_store.get_round()
         blocks = self.tla_engine.generate_triangle()
         verified = self.tla_engine.verify_triangle(blocks)
@@ -318,11 +326,32 @@ class DuCaPraPipeline:
         now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
         try:
             self.tla_engine.current_round = self.state_store.get_round()
+            scan = self.command_scanner.scan(request.command)
+            if not scan.allowed:
+                return self._reject(
+                    "Command rejected by scanner",
+                    now_ms,
+                    event_type="execution_rejected",
+                    details={
+                        "nonce": request.nonce,
+                        "source_id": request.source_id,
+                        "reason": scan.reason,
+                    },
+                )
+
             verified = self.tla_engine.verify_triangle(request.tla_blocks, now_ms=now_ms)
             if verified.round_id != self.tla_engine.current_round:
-                return "SYSTEM: REJECTED - Stale liveness round."
+                return self._reject(
+                    "Stale liveness round",
+                    now_ms,
+                    details={"nonce": request.nonce, "round_id": verified.round_id},
+                )
             if request.expires_at_ms < now_ms:
-                return "SYSTEM: REJECTED - Instruction expired."
+                return self._reject(
+                    "Instruction expired",
+                    now_ms,
+                    details={"nonce": request.nonce, "expires_at_ms": request.expires_at_ms},
+                )
 
             payload = self._instruction_payload(
                 command=request.command,
@@ -344,12 +373,43 @@ class DuCaPraPipeline:
             )
             self.state_store.advance_round(verified.round_id)
         except ValueError as exc:
-            return f"SYSTEM: REJECTED - {exc}."
+            return self._reject(str(exc), now_ms, details={"nonce": request.nonce})
         except Exception:
-            return "SYSTEM: REJECTED - Invalid instruction signature."
+            return self._reject(
+                "Invalid instruction signature",
+                now_ms,
+                details={"nonce": request.nonce, "source_id": request.source_id},
+            )
 
         self.tla_engine.current_round = self.state_store.get_round()
+        self.state_store.append_audit_event(
+            "execution",
+            "executed",
+            {
+                "command_hash": hashlib.sha256(request.command.encode()).hexdigest(),
+                "nonce": request.nonce,
+                "source_id": request.source_id,
+                "round_id": verified.round_id,
+                "triangle_hash": verified.triangle_hash,
+            },
+            now_ms=now_ms,
+        )
         return f"EXECUTING COMMAND: {request.command}"
+
+    def _reject(
+        self,
+        reason: str,
+        now_ms: int,
+        event_type: str = "execution_rejected",
+        details: dict | None = None,
+    ) -> str:
+        self.state_store.append_audit_event(
+            event_type,
+            "rejected",
+            details or {"reason": reason},
+            now_ms=now_ms,
+        )
+        return f"SYSTEM: REJECTED - {reason}."
 
     @staticmethod
     def _instruction_payload(
