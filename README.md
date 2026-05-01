@@ -8,6 +8,7 @@ It demonstrates a fail-closed control plane for privileged LLM-adjacent instruct
 2. Execution requires a valid three-node liveness triangle.
 3. The instruction signature is bound to the specific verified triangle hash.
 4. Nonces are tracked with TTL-based eviction to limit replay and memory growth.
+5. Optional provenance chains allow verified envelopes to be assembled into model context while failed inputs are quarantined.
 
 This prototype protects command execution boundaries. It does not claim to solve every form of prompt injection affecting ordinary model text generation, summarization, or classification.
 
@@ -16,6 +17,7 @@ This prototype protects command execution boundaries. It does not claim to solve
 ```bash
 python3 -m unittest discover -s tests
 python3 -m ducapra
+PYTHONPATH=src python3 examples/basic_usage.py
 ```
 
 Because this workspace contains a read-only placeholder `.git` directory, the repo metadata is initialized in `.duca-git`. Use:
