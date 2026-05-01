@@ -13,6 +13,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+from .state import InMemoryStateStore, StateStore
+
 
 PROTOCOL = "DuCaPra-TLA-v1"
 NODE_NAMES = ("ROOT", "NodeA", "NodeB")
@@ -235,38 +237,34 @@ class TlaEngine:
         self.current_round += 1
 
 
-class NonceStore:
+class NonceStore(InMemoryStateStore):
     """TTL-bounded nonce registry for replay protection without unbounded growth."""
 
     def __init__(self, ttl_seconds: int):
-        self.ttl_ms = ttl_seconds * 1000
-        self._nonces: dict[str, int] = {}
+        super().__init__(nonce_ttl_seconds=ttl_seconds)
 
     def reserve(self, nonce: str, now_ms: int | None = None) -> None:
-        now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
-        self.evict(now_ms)
-        if nonce in self._nonces:
-            raise ValueError("replay detected")
-        self._nonces[nonce] = now_ms
+        self.reserve_nonce(nonce, now_ms=now_ms)
 
     def evict(self, now_ms: int | None = None) -> None:
-        now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
-        expired = [
-            nonce
-            for nonce, seen_at_ms in self._nonces.items()
-            if now_ms - seen_at_ms > self.ttl_ms
-        ]
-        for nonce in expired:
-            del self._nonces[nonce]
-
-    def __len__(self) -> int:
-        return len(self._nonces)
+        self.evict_nonces(now_ms=now_ms)
 
 
 class DuCaPraPipeline:
-    def __init__(self, block_ttl_seconds: int = 30):
-        self.tla_engine = TlaEngine(block_ttl_seconds=block_ttl_seconds)
-        self.nonce_store = NonceStore(ttl_seconds=block_ttl_seconds * 10)
+    def __init__(
+        self,
+        block_ttl_seconds: int = 30,
+        state_store: StateStore | None = None,
+        tla_engine: TlaEngine | None = None,
+    ):
+        self.tla_engine = tla_engine or TlaEngine(block_ttl_seconds=block_ttl_seconds)
+        self.state_store = (
+            state_store
+            if state_store is not None
+            else InMemoryStateStore(nonce_ttl_seconds=block_ttl_seconds * 10)
+        )
+        self.nonce_store = self.state_store
+        self.tla_engine.current_round = self.state_store.get_round()
 
     def sign_instruction(
         self,
@@ -295,6 +293,7 @@ class DuCaPraPipeline:
         source_id: str = "admin",
         expires_in_seconds: int = 30,
     ) -> ExecutionRequest:
+        self.tla_engine.current_round = self.state_store.get_round()
         blocks = self.tla_engine.generate_triangle()
         verified = self.tla_engine.verify_triangle(blocks)
         expires_at_ms = int(time.time() * 1000) + expires_in_seconds * 1000
@@ -318,7 +317,10 @@ class DuCaPraPipeline:
     def attempt_execution(self, request: ExecutionRequest, now_ms: int | None = None) -> str:
         now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
         try:
+            self.tla_engine.current_round = self.state_store.get_round()
             verified = self.tla_engine.verify_triangle(request.tla_blocks, now_ms=now_ms)
+            if verified.round_id != self.tla_engine.current_round:
+                return "SYSTEM: REJECTED - Stale liveness round."
             if request.expires_at_ms < now_ms:
                 return "SYSTEM: REJECTED - Instruction expired."
 
@@ -334,13 +336,19 @@ class DuCaPraPipeline:
                 bytes.fromhex(request.instruction_sig),
                 payload,
             )
-            self.nonce_store.reserve(request.nonce, now_ms=now_ms)
+            self.state_store.reserve_nonce(request.nonce, now_ms=now_ms)
+            self.state_store.record_triangle(
+                verified.round_id,
+                verified.triangle_hash,
+                now_ms=now_ms,
+            )
+            self.state_store.advance_round(verified.round_id)
         except ValueError as exc:
             return f"SYSTEM: REJECTED - {exc}."
         except Exception:
             return "SYSTEM: REJECTED - Invalid instruction signature."
 
-        self.tla_engine.next_round()
+        self.tla_engine.current_round = self.state_store.get_round()
         return f"EXECUTING COMMAND: {request.command}"
 
     @staticmethod

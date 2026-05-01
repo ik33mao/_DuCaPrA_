@@ -20,6 +20,19 @@ python3 -m ducapra
 PYTHONPATH=src python3 examples/basic_usage.py
 ```
 
+## Durable State
+
+The default pipeline uses memory state for prototypes. Production deployments should use durable state so nonce replay protection and the TLA round counter survive process restarts:
+
+```python
+from ducapra import DuCaPraPipeline, SQLiteStateStore
+
+state = SQLiteStateStore("ducapra-state.db", nonce_ttl_seconds=300)
+pipeline = DuCaPraPipeline(state_store=state)
+```
+
+SQLite is the local reference implementation. Multi-node deployments should put the same semantics behind a transactional service or database with compare-and-swap round advancement.
+
 Because this workspace contains a read-only placeholder `.git` directory, the repo metadata is initialized in `.duca-git`. Use:
 
 ```bash

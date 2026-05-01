@@ -1,8 +1,10 @@
 import time
 import unittest
 from dataclasses import replace
+from tempfile import TemporaryDirectory
+from pathlib import Path
 
-from ducapra import DuCaPraPipeline, TlaEngine
+from ducapra import DuCaPraPipeline, SQLiteStateStore, TlaEngine
 
 
 class DuCaPraSecurityTests(unittest.TestCase):
@@ -85,6 +87,41 @@ class DuCaPraSecurityTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "expected ROOT"):
             engine.verify_triangle(blocks)
+
+    def test_sqlite_state_persists_round_across_pipeline_restart(self):
+        with TemporaryDirectory() as tmpdir:
+            state_path = Path(tmpdir) / "ducapra.db"
+            engine = TlaEngine()
+            first_store = SQLiteStateStore(state_path, nonce_ttl_seconds=300)
+            first = DuCaPraPipeline(state_store=first_store, tla_engine=engine)
+
+            request = first.build_request("SAFE_COMMAND", "nonce-durable-round")
+            self.assertIn("EXECUTING COMMAND", first.attempt_execution(request))
+            first_store.close()
+
+            second_store = SQLiteStateStore(state_path, nonce_ttl_seconds=300)
+            second = DuCaPraPipeline(state_store=second_store, tla_engine=engine)
+
+            self.assertEqual(second.tla_engine.current_round, 1)
+            second_store.close()
+
+    def test_sqlite_state_blocks_replay_across_pipeline_restart(self):
+        with TemporaryDirectory() as tmpdir:
+            state_path = Path(tmpdir) / "ducapra.db"
+            engine = TlaEngine()
+            first_store = SQLiteStateStore(state_path, nonce_ttl_seconds=300)
+            first = DuCaPraPipeline(state_store=first_store, tla_engine=engine)
+
+            request = first.build_request("SAFE_COMMAND", "nonce-durable-replay")
+            self.assertIn("EXECUTING COMMAND", first.attempt_execution(request))
+            first_store.close()
+
+            second_store = SQLiteStateStore(state_path, nonce_ttl_seconds=300)
+            second = DuCaPraPipeline(state_store=second_store, tla_engine=engine)
+            replay = second.build_request("SAFE_COMMAND", "nonce-durable-replay")
+
+            self.assertIn("replay detected", second.attempt_execution(replay))
+            second_store.close()
 
 
 if __name__ == "__main__":

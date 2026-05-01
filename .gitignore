@@ -4,3 +4,6 @@ __pycache__/
 .mypy_cache/
 .duca-git/
 *.zip
+*.db
+*.db-shm
+*.db-wal
