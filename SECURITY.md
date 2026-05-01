@@ -2,6 +2,8 @@
 
 DuCaPra is a research prototype for cryptographically authenticated LLM-adjacent command execution.
 
+The project is led from an idea-first, non-technical founder perspective and is intended to invite professional review. The security goal is to explore stronger foundations for private AI discussions and enterprise-grade execution rights, not to claim finished production assurance.
+
 ## Scope
 
 In scope:
@@ -31,3 +33,11 @@ Open a private GitHub security advisory if available, or file an issue with a mi
 - TTL and clock-skew checks
 - Pre-signing prompt-injection scanner
 - Tamper-evident hash-chained audit log
+
+## Review Priorities
+
+- Whether the cryptographic trust boundary is correctly scoped
+- Whether the liveness model is useful for enterprise execution authorization
+- How private conversation contents should be encrypted, stored, and revoked
+- How key custody should work with KMS, HSMs, or trusted execution environments
+- How non-technical users should safely configure and understand the system

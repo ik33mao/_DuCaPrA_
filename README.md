@@ -2,6 +2,14 @@
 
 DuCaPra is a research prototype for **Dual-Layer Cryptographically Anchored Prompt Authentication** with **Triangular Liveness Attestation**. It separates trusted executable instructions from untrusted natural-language data by verifying cryptographic envelopes and liveness proofs before any privileged command is allowed to run.
 
+## Author Intent
+
+This repository is shared by a non-technical founder/research originator to put forward an idea for discussion, testing, and extension by security engineers, cryptographers, AI researchers, and privacy-focused builders.
+
+The core motivation is simple: as AI systems become more capable, private conversations and privileged execution rights should not depend only on natural-language promises or model behavior. DuCaPra explores whether trust can be moved down into a more fundamental cryptographic layer, so future systems can better protect private discussions, distinguish data from executable authority, and support enterprise-grade authentication before actions are allowed to run.
+
+This is not presented as a finished production security product. It is a working prototype and research artifact intended to invite stronger designs, criticism, implementations, and formal review.
+
 It demonstrates a fail-closed control plane for privileged LLM-adjacent instructions:
 
 1. Instructions are signed in cryptographic envelopes.
@@ -16,7 +24,11 @@ This prototype protects command execution boundaries by decoupling instruction e
 
 Suggested GitHub repo description:
 
-> DuCaPra implements DCAPA + TLA: signed instruction envelopes, triangular liveness attestation, durable replay protection, provenance validation, prompt-injection pre-scanning, and hash-chained audit logs for LLM-adjacent command security.
+> DuCaPra is a research prototype for cryptographically protected AI conversations and enterprise-grade execution authentication, using signed instruction envelopes, triangular liveness attestation, durable replay protection, and audit logs.
+
+## Collaboration
+
+Contributions are welcome from both technical and non-technical collaborators. Useful areas include threat modeling, cryptographic review, distributed liveness protocols, key-management design, privacy-preserving conversation storage, enterprise authorization policy, documentation, and plain-language explanations.
 
 ## Run
 
